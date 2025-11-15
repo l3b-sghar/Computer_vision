@@ -3,12 +3,15 @@ numpy>=1.21.0
 opencv-python>=4.5.0
 opencv-contrib-python>=4.5.0
 
-# Deep Learning frameworks
+# Emotion Recognition (choose one or both)
+deepface>=0.0.79  # Recommended: Pre-trained emotion recognition models
+
+# Deep Learning frameworks (optional if using DeepFace)
 tensorflow>=2.10.0
 torch>=2.0.0
 torchvision>=0.15.0
 
-# Object Detection & Pose Estimation
+# Object Detection & Pose Estimation (optional for future features)
 ultralytics>=8.0.0  # YOLO
 mediapipe>=0.10.0
 

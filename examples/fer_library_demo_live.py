@@ -12,9 +12,29 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import time
 import numpy as np
 import cv2
-from fer import FER
-import matplotlib.pyplot as plt
 from collections import deque
+
+# Try to import FER library (correct import path)
+try:
+    from fer.fer import FER
+    FER_AVAILABLE = True
+except ImportError as e:
+    FER_AVAILABLE = False
+    print("=" * 60)
+    print("ERROR: 'fer' library not found or cannot be imported")
+    print(f"Details: {e}")
+    print("=" * 60)
+    print("\nPlease install the fer library:")
+    print("  pip install fer")
+    print("\nOr try:")
+    print("  pip uninstall fer")
+    print("  pip install fer")
+    print("\nAlternatively, you can use the DeepFace version:")
+    print("  pip install deepface")
+    print("  # Then modify fer.py to use DeepFace")
+    print("=" * 60)
+    import sys
+    sys.exit(1)
 
 
 class FERLibraryDemo:
@@ -38,7 +58,6 @@ class FERLibraryDemo:
         
         # Emotion tracking
         self.emotion_history = []
-        self.satisfaction_history = deque(maxlen=100)
         
         # Colors for visualization
         self.emotion_colors = {
@@ -49,17 +68,6 @@ class FERLibraryDemo:
             'angry': (0, 0, 255),       # Red
             'disgust': (128, 0, 128),   # Purple
             'fear': (0, 165, 255)       # Orange
-        }
-        
-        # Emotion to satisfaction mapping
-        self.emotion_to_satisfaction = {
-            'happy': 1.0,
-            'surprise': 0.7,
-            'neutral': 0.5,
-            'fear': 0.4,
-            'sad': 0.3,
-            'disgust': 0.2,
-            'angry': 0.1
         }
     
     def initialize(self) -> bool:
@@ -97,22 +105,6 @@ class FERLibraryDemo:
         print("-" * 50)
         print()
         return True
-    
-    def compute_satisfaction(self, emotions):
-        """
-        Compute satisfaction score from emotion probabilities.
-        
-        Args:
-            emotions: Dictionary of emotion probabilities
-            
-        Returns:
-            Satisfaction score (0-1)
-        """
-        satisfaction = 0.0
-        for emotion, prob in emotions.items():
-            if emotion in self.emotion_to_satisfaction:
-                satisfaction += prob * self.emotion_to_satisfaction[emotion]
-        return satisfaction
     
     def draw_emotion_bars(self, frame, emotions, x, y, width=200):
         """
@@ -166,10 +158,6 @@ class FERLibraryDemo:
         emotion = dominant_emotion[0]
         confidence = dominant_emotion[1]
         
-        # Compute satisfaction
-        satisfaction = self.compute_satisfaction(emotions)
-        self.satisfaction_history.append(satisfaction)
-        
         # Get color
         color = self.emotion_colors.get(emotion, (255, 255, 255))
         
@@ -187,11 +175,6 @@ class FERLibraryDemo:
         # Label text
         cv2.putText(frame, label, (x + 5, y - 5),
                    cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 0, 0), 2)
-        
-        # Draw satisfaction score
-        satisfaction_text = f"Satisfaction: {satisfaction:.2f}"
-        cv2.putText(frame, satisfaction_text, (x, y + h + 20),
-                   cv2.FONT_HERSHEY_SIMPLEX, 0.5, color, 1)
         
         # Draw emotion probability bars if space available
         bar_x = x + w + 10
@@ -222,12 +205,6 @@ class FERLibraryDemo:
                    cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 1)
         cv2.putText(frame, f"Faces: {face_count}", (20, 75),
                    cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 1)
-        
-        # Average satisfaction
-        if len(self.satisfaction_history) > 0:
-            avg_sat = np.mean(self.satisfaction_history)
-            cv2.putText(frame, f"Avg Satisfaction: {avg_sat:.2f}", (20, 95),
-                       cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 1)
         
         # Instructions
         cv2.putText(frame, "Press 'Q' to quit | 'R' to reset | 'S' for stats", 
@@ -267,17 +244,6 @@ class FERLibraryDemo:
                 percentage = (count / total) * 100
                 bar = "█" * int(percentage / 2)
                 print(f"  {emotion:10s}: {percentage:5.1f}% {bar}")
-        
-        if len(self.satisfaction_history) > 0:
-            avg_sat = np.mean(self.satisfaction_history)
-            print(f"\nAverage Satisfaction: {avg_sat:.3f}")
-            
-            if avg_sat >= 0.7:
-                print("Overall Sentiment: POSITIVE ✓ 😊")
-            elif avg_sat >= 0.4:
-                print("Overall Sentiment: NEUTRAL ● 😐")
-            else:
-                print("Overall Sentiment: NEGATIVE ✗ 😞")
         
         print("=" * 50)
     
@@ -327,7 +293,6 @@ class FERLibraryDemo:
                 elif key == ord('r') or key == ord('R'):
                     print("\nResetting statistics...")
                     self.emotion_history = []
-                    self.satisfaction_history.clear()
                     self.frame_count = 0
                     self.fps_history.clear()
                 elif key == ord('s') or key == ord('S'):

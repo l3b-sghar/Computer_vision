@@ -48,6 +48,13 @@ class Config:
     # Emotion Recognition Configuration
     EMOTION_MODEL_PATH = os.getenv('EMOTION_MODEL_PATH', 'models/emotion/emotion_model.h5')
     EMOTION_LABELS = ['angry', 'disgust', 'fear', 'happy', 'sad', 'surprise', 'neutral']
+    # Facial Emotion Recognition (FER) specific defaults
+    FER_INPUT_SIZE = int(os.getenv('FER_INPUT_SIZE', '48'))
+    FER_TEMPORAL_SMOOTHING_ALPHA = float(os.getenv('FER_TEMPORAL_SMOOTHING_ALPHA', '0.6'))
+    FER_CONFIDENCE_THRESHOLD = float(os.getenv('FER_CONFIDENCE_THRESHOLD', '0.5'))
+    FER_FALLBACK_EMOTION = os.getenv('FER_FALLBACK_EMOTION', 'neutral')
+    FER_USE_PRETRAINED = os.getenv('FER_USE_PRETRAINED', 'false').lower() == 'true'
+    FER_USE_DEEPFACE = os.getenv('FER_USE_DEEPFACE', 'true').lower() == 'true'  # Use DeepFace by default
     
     # FER Configuration
     FER_INPUT_SIZE = int(os.getenv('FER_INPUT_SIZE', '48'))  # Input size for FER model

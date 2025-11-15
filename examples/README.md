@@ -1,10 +1,28 @@
 # Examples
 
-This directory contains example scripts demonstrating the usage of various modules in the Computer Vision system.
+This directory contains example scripts demonstrating facial emotion recognition (FER) and sentiment analysis.
 
-## Live Camera FER Demo (`fer_demo.py`)
+## Available Demos
 
-Real-time facial emotion recognition using your webcam with accurate pre-trained models.
+### 1. Live Camera Demos
+
+#### `fer_demo_live.py` - Custom FER Implementation (DeepFace)
+Real-time emotion recognition using our custom FER module with DeepFace backend.
+
+#### `fer_library_demo_live.py` - FER Library
+Real-time emotion recognition using the lightweight `fer` library.
+
+### 2. Video Analysis Demos
+
+#### `fer_demo_video.py` - Custom FER Implementation (DeepFace)
+Analyzes pre-recorded videos and generates comprehensive sentiment reports.
+
+#### `fer_library_demo_video.py` - FER Library
+Video analysis using the lightweight `fer` library.
+
+---
+
+## 1. Custom FER Implementation (DeepFace Backend)
 
 ### Quick Setup (RECOMMENDED)
 
@@ -81,6 +99,25 @@ pip install fer
 - FPS counter and session statistics
 - Emotion distribution over time
 
+### Live Camera Usage
+
+```powershell
+python fer_demo_live.py
+```
+
+### Video Analysis Usage
+
+```powershell
+# Analyze video without saving output
+python fer_demo_video.py input.mp4
+
+# Analyze and save annotated video
+python fer_demo_video.py input.mp4 --output result.mp4
+
+# Process without preview (faster)
+python fer_demo_video.py input.mp4 --no-preview
+```
+
 ### Output Example
 
 When working correctly with DeepFace, you'll see:
@@ -89,3 +126,70 @@ When working correctly with DeepFace, you'll see:
 - Satisfaction score (e.g., "Satisfaction: 0.92")
 - Probability bars for all 7 emotions
 - Real-time FPS and face count
+- Comprehensive sentiment report (video analysis)
+
+---
+
+## 2. FER Library Implementation
+
+Lightweight alternative using the `fer` library with built-in face detection.
+
+### Quick Setup
+
+```powershell
+pip install fer
+```
+
+### Live Camera Usage
+
+```powershell
+python fer_library_demo_live.py
+```
+
+### Video Analysis Usage
+
+```powershell
+# Analyze video
+python fer_library_demo_video.py input.mp4
+
+# With output video
+python fer_library_demo_video.py input.mp4 --output result.mp4
+
+# No preview (faster)
+python fer_library_demo_video.py input.mp4 --no-preview
+```
+
+### Features
+
+- **Simpler setup** - just one pip install
+- **Built-in face detection** - uses Haar Cascade or MTCNN
+- **Good performance** - 20-40 FPS on webcam
+- **7 emotions detected** - same as DeepFace version
+- **Satisfaction scoring** - emotion to sentiment mapping
+- **Comprehensive reports** - detailed video analysis
+
+---
+
+## Comparison: Which Demo to Use?
+
+| Feature | Custom FER (DeepFace) | FER Library |
+|---------|----------------------|-------------|
+| **Accuracy** | ★★★★★ Very High | ★★★★☆ High |
+| **Speed** | ★★★★☆ Good (15-30 FPS) | ★★★★★ Fast (20-40 FPS) |
+| **Setup** | pip install deepface | pip install fer |
+| **Dependencies** | Heavy (TensorFlow) | Light |
+| **Best For** | Production, High Accuracy | Quick tests, Demos |
+
+---
+
+## All Demo Files
+
+```
+examples/
+├── fer_demo_live.py              # Custom FER + DeepFace (Live)
+├── fer_demo_video.py             # Custom FER + DeepFace (Video)
+├── fer_library_demo_live.py      # FER Library (Live)
+├── fer_library_demo_video.py     # FER Library (Video)
+├── fer_demo_old.py               # Old demo (backup)
+└── README.md                     # This file
+```
