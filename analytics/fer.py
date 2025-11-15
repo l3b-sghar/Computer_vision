@@ -231,7 +231,9 @@ class FacialEmotionRecognizer:
             
             # Case 4: Dictionary with FaceMesh landmarks
             if 'landmarks' in face_data or 'face_landmarks' in face_data:
-                landmarks = face_data.get('landmarks') or face_data.get('face_landmarks')
+                landmarks = face_data.get('landmarks')
+                if landmarks is None:
+                    landmarks = face_data.get('face_landmarks')
                 frame = face_data.get('frame')
                 
                 if landmarks is not None and frame is not None:
