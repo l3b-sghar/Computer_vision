@@ -71,4 +71,6 @@ class AnalyticsResult:
         return result
 
 
-__all__ = ['AnalyticsResult']
+from .fer import FacialEmotionRecognizer
+
+__all__ = ['AnalyticsResult', 'FacialEmotionRecognizer']

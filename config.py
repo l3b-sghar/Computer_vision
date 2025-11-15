@@ -49,6 +49,13 @@ class Config:
     EMOTION_MODEL_PATH = os.getenv('EMOTION_MODEL_PATH', 'models/emotion/emotion_model.h5')
     EMOTION_LABELS = ['angry', 'disgust', 'fear', 'happy', 'sad', 'surprise', 'neutral']
     
+    # FER Configuration
+    FER_INPUT_SIZE = int(os.getenv('FER_INPUT_SIZE', '48'))  # Input size for FER model
+    FER_USE_PRETRAINED = os.getenv('FER_USE_PRETRAINED', 'true').lower() == 'true'
+    FER_TEMPORAL_SMOOTHING_ALPHA = float(os.getenv('FER_TEMPORAL_SMOOTHING_ALPHA', '0.3'))  # EMA smoothing factor
+    FER_CONFIDENCE_THRESHOLD = float(os.getenv('FER_CONFIDENCE_THRESHOLD', '0.5'))  # Minimum confidence for predictions
+    FER_FALLBACK_EMOTION = os.getenv('FER_FALLBACK_EMOTION', 'neutral')  # Default emotion when no face detected
+    
     # Analytics Configuration
     SATISFACTION_WEIGHT_FACE = float(os.getenv('SATISFACTION_WEIGHT_FACE', '0.6'))
     SATISFACTION_WEIGHT_BODY = float(os.getenv('SATISFACTION_WEIGHT_BODY', '0.4'))
