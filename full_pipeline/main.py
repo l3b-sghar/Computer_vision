@@ -14,6 +14,8 @@ import numpy as np
 from ultralytics import YOLO
 import os
 import sys
+import math
+import collections
 
 # Add parent directory to path for imports
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -42,6 +44,9 @@ except ImportError:
     print("Install with: pip install tensorflow")
     print("=" * 60)
 
+# MediaPipe is not used in main.py (this uses main_simple.py instead)
+MEDIAPIPE_AVAILABLE = False
+
 
 class IntegratedPipeline:
     """Integrated YOLO ROI tracking with FER emotion detection and body language analysis."""
@@ -61,12 +66,8 @@ class IntegratedPipeline:
         self.fer_detector = FER(mtcnn=False)  # FER emotion detector
         self.video_path = video_path
         
-        # MediaPipe Pose for body language
-        if MEDIAPIPE_AVAILABLE:
-            mp_pose = mp.solutions.pose
-            self.pose_detector = mp_pose.Pose(model_complexity=1, enable_segmentation=False)
-        else:
-            self.pose_detector = None
+        # MediaPipe Pose for body language (not available in this version)
+        self.pose_detector = None
         
         # Performance optimization
         self.yolo_skip_frames = yolo_skip_frames

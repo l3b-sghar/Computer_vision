@@ -9,6 +9,7 @@ This script combines:
 5. Returns: JSON format with satisfaction metrics
 """
 
+import gc  # For garbage collection
 import cv2
 import time
 import numpy as np
@@ -63,8 +64,8 @@ class IntegratedPipeline:
     """Integrated YOLO ROI tracking with FER emotion detection, TFLite body language, and Gender Classification."""
     
     def __init__(self, yolo_model_path, tflite_model_path=None, video_path=None, 
-                 yolo_skip_frames=5, fer_skip_frames=5, body_skip_frames=5, gender_skip_frames=10,
-                 counter_id="C1"):
+                 yolo_skip_frames=3, fer_skip_frames=8, body_skip_frames=8, gender_skip_frames=15,
+                 age_skip_frames=15, counter_id="C1"):
         """
         Initialize the integrated pipeline.
         
@@ -72,14 +73,38 @@ class IntegratedPipeline:
             yolo_model_path: Path to YOLO model
             tflite_model_path: Path to TFLite body language model
             video_path: Path to video file (None for webcam)
-            yolo_skip_frames: Process YOLO every N frames (5 for performance)
-            fer_skip_frames: Process FER every N frames (5 for performance)
-            body_skip_frames: Process body language every N frames (5 for performance)
-            gender_skip_frames: Process gender every N frames (10 for performance)
+            yolo_skip_frames: Process YOLO every N frames (3 for smooth tracking)
+            fer_skip_frames: Process FER every N frames (8 for performance)
+            body_skip_frames: Process body language every N frames (8 for performance)
+            gender_skip_frames: Process gender every N frames (15 for transformer efficiency)
+            age_skip_frames: Process age every N frames (15 for transformer efficiency)
             counter_id: Counter identifier (e.g., "C1", "C2")
         """
-        self.yolo_model = YOLO(yolo_model_path)
-        self.fer_detector = FER(mtcnn=False)  # FER emotion detector
+        # Clear memory before loading heavy models
+        gc.collect()
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
+        
+        # Load YOLO model with error handling for memory issues
+        try:
+            print("Loading YOLO model...")
+            self.yolo_model = YOLO(yolo_model_path)
+            print(f"✓ YOLO model loaded: {os.path.basename(yolo_model_path)}")
+            gc.collect()  # Free any temporary memory used during loading
+        except RuntimeError as e:
+            if "not enough memory" in str(e):
+                print("\n❌ ERROR: Not enough memory to load YOLO model")
+                print("   Try closing other applications and running again")
+                print("   Or restart Python to free up memory")
+                raise MemoryError("Insufficient memory to load YOLO model") from e
+            else:
+                raise
+        
+        print("Loading FER emotion detector...")
+        self.fer_detector = FER(mtcnn=True)  # FER emotion detector
+        print("✓ FER detector loaded")
+        gc.collect()
+        
         self.video_path = video_path
         self.counter_id = counter_id
         
@@ -110,27 +135,55 @@ class IntegratedPipeline:
         
         if TRANSFORMERS_AVAILABLE:
             try:
+                gc.collect()  # Free memory before loading transformer
                 model_name = "rizvandwiki/gender-classification"
                 print(f"Loading gender classification model: {model_name}")
-                self.gender_processor = AutoImageProcessor.from_pretrained(model_name)
+                self.gender_processor = AutoImageProcessor.from_pretrained(model_name, use_fast=True)
                 self.gender_model = AutoModelForImageClassification.from_pretrained(model_name)
                 self.gender_model.to(self.gender_device)
                 self.gender_model.eval()
                 print(f"✓ Gender classification model loaded (device: {self.gender_device})")
+                gc.collect()
             except Exception as e:
                 print(f"Warning: Could not load gender classification model: {e}")
                 self.gender_processor = None
                 self.gender_model = None
+        
+        # Age classification model
+        self.age_processor = None
+        self.age_model = None
+        self.age_device = "cuda" if TRANSFORMERS_AVAILABLE and torch.cuda.is_available() else "cpu"
+        self.age_classes = ['0-2', '3-9', '10-19', '20-29', '30-39', '40-49', '50-59', '60-69', '70+']
+        self.age_counts = {age: 0 for age in self.age_classes}
+        self.age_history = []
+        
+        if TRANSFORMERS_AVAILABLE:
+            try:
+                gc.collect()  # Free memory before loading transformer
+                age_model_name = "nateraw/vit-age-classifier"
+                print(f"Loading age classification model: {age_model_name}")
+                self.age_processor = AutoImageProcessor.from_pretrained(age_model_name, use_fast=True)
+                self.age_model = AutoModelForImageClassification.from_pretrained(age_model_name)
+                self.age_model.to(self.age_device)
+                self.age_model.eval()
+                print(f"✓ Age classification model loaded (device: {self.age_device})")
+                gc.collect()
+            except Exception as e:
+                print(f"Warning: Could not load age classification model: {e}")
+                self.age_processor = None
+                self.age_model = None
         
         # Performance optimization
         self.yolo_skip_frames = yolo_skip_frames
         self.fer_skip_frames = fer_skip_frames
         self.body_skip_frames = body_skip_frames
         self.gender_skip_frames = gender_skip_frames
+        self.age_skip_frames = age_skip_frames
         self.last_yolo_result = None
         self.last_fer_result = None
         self.last_body_result = None
         self.last_gender_result = None
+        self.last_age_result = None
         
         # Region of Interest (bottom 1/5th of frame)
         self.roi_height_ratio = 0.2
@@ -283,20 +336,59 @@ class IntegratedPipeline:
             print(f"Body language prediction error: {e}")
             return None, 0.0, 0
     
+    def analyze_skin_features(self, frame):
+        """
+        Analyze skin tone features that correlate with gender presentation.
+        Returns skin smoothness score and brightness score.
+        """
+        try:
+            # Convert to different color spaces for analysis
+            hsv = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
+            ycrcb = cv2.cvtColor(frame, cv2.COLOR_BGR2YCrCb)
+            
+            # Skin detection mask (focusing on face region)
+            lower_skin = np.array([0, 20, 70], dtype=np.uint8)
+            upper_skin = np.array([20, 255, 255], dtype=np.uint8)
+            skin_mask = cv2.inRange(hsv, lower_skin, upper_skin)
+            
+            # Calculate skin smoothness using variance (lower variance = smoother)
+            gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+            skin_region = cv2.bitwise_and(gray, gray, mask=skin_mask)
+            
+            # Variance in skin region (lower = smoother)
+            if np.count_nonzero(skin_mask) > 100:
+                variance = np.var(skin_region[skin_mask > 0])
+                smoothness = 1.0 / (1.0 + variance / 100.0)  # Normalize
+            else:
+                smoothness = 0.5
+            
+            # Calculate average brightness in skin areas
+            y_channel = ycrcb[:, :, 0]
+            skin_brightness = np.mean(y_channel[skin_mask > 0]) if np.count_nonzero(skin_mask) > 0 else 128
+            brightness_score = skin_brightness / 255.0
+            
+            return smoothness, brightness_score
+        
+        except Exception as e:
+            return 0.5, 0.5  # Neutral values on error
+    
     def predict_gender(self, frame):
         """
-        Predict gender from frame using Hugging Face transformer.
+        Predict gender from frame using transformer with skin feature analysis.
         Returns: (label, confidence) e.g., ("female", 0.95)
         """
         if self.gender_processor is None or self.gender_model is None:
             return None, 0.0
         
         try:
-            # Convert BGR to RGB
+            # Analyze skin features for additional context
+            smoothness, brightness = self.analyze_skin_features(frame)
+            
+            # Simple RGB conversion for model
             image_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
             image_pil = Image.fromarray(image_rgb)
             
-            # Preprocess
+            # Preprocess with model processor
             inputs = self.gender_processor(images=image_pil, return_tensors="pt")
             inputs = {k: v.to(self.gender_device) for k, v in inputs.items()}
             
@@ -305,18 +397,82 @@ class IntegratedPipeline:
                 outputs = self.gender_model(**inputs)
                 logits = outputs.logits
             
-            # Get prediction
+            # Get raw probabilities
+            probabilities = torch.nn.functional.softmax(logits, dim=-1).cpu().numpy()[0]
+            
+            # Get model's prediction
+            predicted_class = probabilities.argmax()
+            base_confidence = probabilities[predicted_class]
+            label = self.gender_model.config.id2label[predicted_class].lower()
+            
+            # Adjust prediction based on skin features
+            # Smoother, lighter skin correlates with female presentation
+            skin_female_score = (smoothness * 0.6 + brightness * 0.4)
+            
+            # If skin features suggest female and confidence is not very high
+            if skin_female_score > 0.6 and base_confidence < 0.85:
+                # Check if we should override prediction
+                if label == "male" and skin_female_score > 0.7:
+                    # Recalculate with skin bias
+                    female_idx = 0 if self.gender_model.config.id2label[0].lower() == "female" else 1
+                    male_idx = 1 - female_idx
+                    
+                    # Boost female probability based on skin features
+                    boost_factor = (skin_female_score - 0.5) * 0.3  # Up to 15% boost
+                    adjusted_female_prob = min(0.95, probabilities[female_idx] + boost_factor)
+                    adjusted_male_prob = 1.0 - adjusted_female_prob
+                    
+                    # Update prediction if female probability is now higher
+                    if adjusted_female_prob > adjusted_male_prob:
+                        label = "female"
+                        confidence = adjusted_female_prob
+                    else:
+                        confidence = base_confidence
+                else:
+                    confidence = base_confidence
+            else:
+                confidence = base_confidence
+            
+            return label, float(confidence)
+        
+        except Exception as e:
+            print(f"Gender prediction error: {e}")
+            return None, 0.0
+    
+    def predict_age(self, frame):
+        """
+        Predict age from frame using Hugging Face Vision Transformer.
+        Returns: (age_group, confidence) e.g., ("20-29", 0.85)
+        """
+        if self.age_processor is None or self.age_model is None:
+            return None, 0.0
+        
+        try:
+            # Simple RGB conversion (good lighting = no complex preprocessing needed)
+            image_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+            image_pil = Image.fromarray(image_rgb)
+            
+            # Preprocess with model processor
+            inputs = self.age_processor(images=image_pil, return_tensors="pt")
+            inputs = {k: v.to(self.age_device) for k, v in inputs.items()}
+            
+            # Inference
+            with torch.no_grad():
+                outputs = self.age_model(**inputs)
+                logits = outputs.logits
+            
+            # Get prediction with softmax
             probabilities = torch.nn.functional.softmax(logits, dim=-1)
             predicted_class = probabilities.argmax().item()
             confidence = probabilities[0][predicted_class].item()
             
             # Map to label
-            label = self.gender_model.config.id2label[predicted_class]
+            age_group = self.age_model.config.id2label[predicted_class]
             
-            return label.lower(), float(confidence)
+            return age_group, float(confidence)
         
         except Exception as e:
-            print(f"Gender prediction error: {e}")
+            print(f"Age prediction error: {e}")
             return None, 0.0
     
     def calculate_satisfaction_rate(self, emotions_list, processing_time):
@@ -415,6 +571,8 @@ class IntegratedPipeline:
                         
                         # Draw person bounding box
                         cv2.rectangle(frame, (x1, y1), (x2, y2), color, 2)
+                        
+                        # Draw person label at top
                         cv2.putText(frame, label, (x1, y1 - 10),
                                    cv2.FONT_HERSHEY_SIMPLEX, 0.6, color, 2)
         
@@ -470,6 +628,33 @@ class IntegratedPipeline:
             if gender_label in self.gender_counts:
                 self.gender_counts[gender_label] += 1
             self.gender_history.append((gender_label, gender_conf))
+        
+        # Run age classification ONLY for person in ROI (every N frames)
+        current_age = None
+        current_age_conf = 0.0
+        if self.age_model and person_detected_in_roi and person_roi_box and self.frame_count % self.age_skip_frames == 0:
+            # Crop to person bounding box
+            x1, y1, x2, y2 = person_roi_box
+            person_crop = frame[y1:y2, x1:x2]
+            
+            if person_crop.size > 0:
+                age_label, age_conf = self.predict_age(person_crop)
+                self.last_age_result = (age_label, age_conf)
+            else:
+                self.last_age_result = None
+        elif person_detected_in_roi and self.last_age_result:
+            age_label, age_conf = self.last_age_result
+        else:
+            age_label, age_conf = None, 0.0
+            self.last_age_result = None
+        
+        # Store age results
+        if age_label and person_detected_in_roi:
+            current_age = age_label
+            current_age_conf = age_conf
+            if age_label in self.age_counts:
+                self.age_counts[age_label] += 1
+            self.age_history.append((age_label, age_conf))
         
         # Run FER emotion detection ONLY for the person in ROI
         current_emotion = None
@@ -553,21 +738,46 @@ class IntegratedPipeline:
                 self.roi_start_time = None
                 self.current_session_time = 0.0
         
+        # Draw gender and age labels on person bounding box if detected
+        if person_detected_in_roi and person_roi_box:
+            x1, y1, x2, y2 = person_roi_box
+            
+            # Draw gender label
+            if current_gender:
+                gender_color = (255, 0, 255) if current_gender == "female" else (0, 255, 0)
+                gender_text = f"Gender: {current_gender.upper()} ({current_gender_conf:.2f})"
+                # Draw background rectangle for better visibility
+                text_size = cv2.getTextSize(gender_text, cv2.FONT_HERSHEY_SIMPLEX, 0.6, 2)[0]
+                cv2.rectangle(frame, (x1, y2 + 5), (x1 + text_size[0] + 10, y2 + 30), (0, 0, 0), -1)
+                cv2.putText(frame, gender_text, (x1 + 5, y2 + 25),
+                           cv2.FONT_HERSHEY_SIMPLEX, 0.6, gender_color, 2)
+            
+            # Draw age label
+            if current_age:
+                age_color = (255, 128, 0)  # Orange
+                age_text = f"Age: {current_age} ({current_age_conf:.2f})"
+                # Draw background rectangle for better visibility
+                text_size = cv2.getTextSize(age_text, cv2.FONT_HERSHEY_SIMPLEX, 0.6, 2)[0]
+                y_pos = y2 + 35 if current_gender else y2 + 5
+                cv2.rectangle(frame, (x1, y_pos), (x1 + text_size[0] + 10, y_pos + 25), (0, 0, 0), -1)
+                cv2.putText(frame, age_text, (x1 + 5, y_pos + 20),
+                           cv2.FONT_HERSHEY_SIMPLEX, 0.6, age_color, 2)
+        
         # Draw comprehensive statistics
         self.draw_statistics(frame, current_emotion, current_body_class, current_body_score, 
-                           current_gender, current_gender_conf)
+                           current_gender, current_gender_conf, current_age, current_age_conf)
         
         return frame
     
     def draw_statistics(self, frame, current_emotion, current_body_class, current_body_score,
-                       current_gender=None, current_gender_conf=0.0):
+                       current_gender=None, current_gender_conf=0.0, current_age=None, current_age_conf=0.0):
         """Draw statistics overlay on frame."""
         y_offset = 30
         line_height = 25
         
-        # Background for statistics (made taller for gender info)
-        cv2.rectangle(frame, (10, 10), (450, 410), (0, 0, 0), -1)
-        cv2.rectangle(frame, (10, 10), (450, 410), (255, 255, 255), 2)
+        # Background for statistics (made taller for gender + age info)
+        cv2.rectangle(frame, (10, 10), (450, 480), (0, 0, 0), -1)
+        cv2.rectangle(frame, (10, 10), (450, 480), (255, 255, 255), 2)
         
         # Title
         cv2.putText(frame, "INTEGRATED PIPELINE", (20, y_offset),
@@ -662,6 +872,35 @@ class IntegratedPipeline:
         elif not TRANSFORMERS_AVAILABLE or not self.gender_model:
             cv2.putText(frame, "Gender model not available", (20, y_offset),
                        cv2.FONT_HERSHEY_SIMPLEX, 0.5, (128, 128, 128), 1)
+        
+        y_offset += line_height + 5
+        
+        # Age Classification Statistics
+        cv2.putText(frame, "AGE (IN ROI)", (20, y_offset),
+                   cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 255), 2)
+        y_offset += line_height
+        
+        if TRANSFORMERS_AVAILABLE and self.age_model and current_age:
+            age_color = (255, 128, 0)  # Orange for age
+            cv2.putText(frame, f"Current: {current_age} ({current_age_conf:.2f})", 
+                       (20, y_offset),
+                       cv2.FONT_HERSHEY_SIMPLEX, 0.5, age_color, 1)
+            y_offset += line_height
+            
+            # Show top 3 age groups
+            total_age = sum(self.age_counts.values())
+            if total_age > 0:
+                sorted_ages = sorted(self.age_counts.items(), key=lambda x: x[1], reverse=True)[:3]
+                for age, count in sorted_ages:
+                    if count > 0:
+                        pct = (count / total_age) * 100
+                        cv2.putText(frame, f"{age}: {count} ({pct:.0f}%)", 
+                                   (20, y_offset),
+                                   cv2.FONT_HERSHEY_SIMPLEX, 0.4, (200, 200, 200), 1)
+                        y_offset += line_height - 5
+        elif not TRANSFORMERS_AVAILABLE or not self.age_model:
+            cv2.putText(frame, "Age model not available", (20, y_offset),
+                       cv2.FONT_HERSHEY_SIMPLEX, 0.5, (128, 128, 128), 1)
     
     def get_dominant_gender(self):
         """Get the most detected gender."""
@@ -674,6 +913,18 @@ class IntegratedPipeline:
         
         # Return gender with highest count
         return max(self.gender_counts, key=self.gender_counts.get)
+    
+    def get_dominant_age(self):
+        """Get the most detected age group."""
+        if not self.age_history:
+            return "unknown"
+        
+        total_age = sum(self.age_counts.values())
+        if total_age == 0:
+            return "unknown"
+        
+        # Return age with highest count
+        return max(self.age_counts, key=self.age_counts.get)
     
     def send_to_server(self, json_output, server_url="http://localhost:3000/pipeline"):
         """
@@ -726,13 +977,16 @@ class IntegratedPipeline:
         # Get dominant gender
         dominant_gender = self.get_dominant_gender()
         
+        # Get dominant age
+        dominant_age = self.get_dominant_age()
+        
         # Build JSON data
         data = {
             "id": 0,
             "counterid": self.counter_id,
             "metrics[satisfaction_rate]": f"{satisfaction_rate:.2f}",
             "metrics[processing_time]": str(int(processing_time)),
-            "client_meta[age]": "19",
+            "client_meta[age]": dominant_age if dominant_age != "unknown" else "19",
             "client_meta[gender]": dominant_gender
         }
         
@@ -865,7 +1119,7 @@ class IntegratedPipeline:
         
         if average_emotion:
             dominant_emotion, confidence = self.get_dominant_emotion(average_emotion)
-            print(f"  Dominant emotion: {dominant_emotion.UPPER()} ({confidence:.2%})")
+            print(f"  Dominant emotion: {dominant_emotion.upper()} ({confidence:.2%})")
             print()
             print("  Emotion distribution:")
             sorted_emotions = sorted(average_emotion.items(), 
@@ -892,6 +1146,24 @@ class IntegratedPipeline:
         else:
             print("  No gender data")
         
+        print()
+        print("AGE CLASSIFICATION:")
+        print(f"  Total age samples (in ROI): {len(self.age_history)}")
+        if self.age_history:
+            dominant_age = self.get_dominant_age()
+            total_age = sum(self.age_counts.values())
+            print(f"  Dominant age group: {dominant_age}")
+            print()
+            print("  Age distribution:")
+            sorted_ages = sorted(self.age_counts.items(), key=lambda x: x[1], reverse=True)
+            for age, count in sorted_ages:
+                if count > 0:
+                    pct = (count / total_age) * 100 if total_age > 0 else 0
+                    bar = "█" * int(pct / 2)
+                    print(f"    {age:10s}: {count:4d} ({pct:5.1f}%) {bar}")
+        else:
+            print("  No age data")
+        
         print("=" * 70)
         print()
         print("╔" + "═" * 68 + "╗")
@@ -908,7 +1180,7 @@ def main():
     print()
     print("╔" + "═" * 70 + "╗")
     print("║" + " " * 18 + "INTEGRATED PIPELINE" + " " * 33 + "║")
-    print("║" + " " * 5 + "YOLO + FER + Body Language + Gender Classification" + " " * 14 + "║")
+    print("║" + " " * 2 + "YOLO + FER + Body Language + Gender + Age Classification" + " " * 11 + "║")
     print("╚" + "═" * 70 + "╝")
     print()
     
@@ -918,7 +1190,7 @@ def main():
         print()
     
     if not TRANSFORMERS_AVAILABLE:
-        print("⚠️  Transformers not available - gender classification will be disabled")
+        print("⚠️  Transformers not available - gender & age classification will be disabled")
         print("   Install with: pip install transformers torch")
         print()
     
@@ -949,15 +1221,16 @@ def main():
         return
     
     # Initialize and run pipeline
-    # Frame skipping optimized: YOLO(5), FER(5), Body(5), Gender(10)
+    # Frame skipping optimized for smooth performance: YOLO(3), FER(8), Body(8), Gender(15), Age(15)
     pipeline = IntegratedPipeline(
         yolo_model_path, 
         tflite_model_path, 
         video_path, 
-        yolo_skip_frames=5, 
-        fer_skip_frames=5, 
-        body_skip_frames=5,
-        gender_skip_frames=10,
+        yolo_skip_frames=3,      # More frequent person detection for smoother tracking
+        fer_skip_frames=8,       # Balanced emotion detection
+        body_skip_frames=8,      # Balanced body language
+        gender_skip_frames=15,   # Less frequent (transformer models are slower)
+        age_skip_frames=15,      # Less frequent (transformer models are slower)
         counter_id="C1"
     )
     
