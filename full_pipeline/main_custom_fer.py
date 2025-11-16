@@ -722,8 +722,8 @@ class IntegratedPipeline:
                        cv2.FONT_HERSHEY_SIMPLEX, 0.6, gender_color, 2)
         
         # Draw statistics (left side)
-        cv2.rectangle(frame, (10, 10), (450, 200), (0, 0, 0), -1)
-        cv2.rectangle(frame, (10, 10), (450, 200), (255, 255, 255), 2)
+        cv2.rectangle(frame, (10, 10), (450, 230), (0, 0, 0), -1)
+        cv2.rectangle(frame, (10, 10), (450, 230), (255, 255, 255), 2)
         
         y_offset = 35
         cv2.putText(frame, "CUSTOM FER PIPELINE", (20, y_offset), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 255), 2)
@@ -739,24 +739,16 @@ class IntegratedPipeline:
         status_color = (0, 255, 0) if self.person_in_roi else (255, 255, 255)
         cv2.putText(frame, f"Status: {'IN ROI' if self.person_in_roi else 'Outside ROI'}", (20, y_offset), cv2.FONT_HERSHEY_SIMPLEX, 0.5, status_color, 1)
         
-        # Draw demographics (top right)
-        demo_x = width - 320
-        demo_y = 10
-        cv2.rectangle(frame, (demo_x, demo_y), (width - 10, 120), (0, 0, 0), -1)
-        cv2.rectangle(frame, (demo_x, demo_y), (width - 10, 120), (255, 255, 255), 2)
+        # Add demographics to the left box
+        y_offset += 30
+        gender_color = (255, 0, 255) if current_gender == "female" else (0, 255, 0) if current_gender else (255, 255, 255)
+        gender_display = current_gender.upper() if current_gender else "N/A"
+        cv2.putText(frame, f"Gender: {gender_display}", (20, y_offset), cv2.FONT_HERSHEY_SIMPLEX, 0.5, gender_color, 1)
         
-        demo_y_offset = 35
-        cv2.putText(frame, "DEMOGRAPHICS", (demo_x + 10, demo_y_offset), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 255), 2)
-        
-        demo_y_offset += 30
-        gender_color = (255, 0, 255) if current_gender == "female" else (0, 255, 0)
-        gender_text = f"Gender: {current_gender.upper() if current_gender else 'N/A'}"
-        cv2.putText(frame, gender_text, (demo_x + 10, demo_y_offset), cv2.FONT_HERSHEY_SIMPLEX, 0.5, gender_color, 1)
-        
-        demo_y_offset += 25
-        age_color = (255, 128, 0)
-        age_text = f"Age: {current_age if current_age else 'N/A'}"
-        cv2.putText(frame, age_text, (demo_x + 10, demo_y_offset), cv2.FONT_HERSHEY_SIMPLEX, 0.5, age_color, 1)
+        y_offset += 25
+        age_color = (255, 128, 0) if current_age else (255, 255, 255)
+        age_display = current_age if current_age else "N/A"
+        cv2.putText(frame, f"Age: {age_display}", (20, y_offset), cv2.FONT_HERSHEY_SIMPLEX, 0.5, age_color, 1)
         
         return frame
     
@@ -914,7 +906,7 @@ def main():
     tflite_model_path = r"../models/body_language.tflite"
     
     # Video source
-    video_path = r"../data_manipulator/Data_sample_Time_processing_&_Emotion_Detection/sample_cam2.mp4"
+    video_path = r"../data_manipulator/Data_sample_Time_processing_&_Emotion_Detection/sample_cam1.mp4"
     # video_path = None  # For webcam
     
     # Check if models exist

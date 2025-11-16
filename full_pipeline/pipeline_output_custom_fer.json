@@ -1,8 +1,8 @@
 {
     "id": 0,
     "counterid": "C1",
-    "metrics[satisfaction_rate]": 0.36,
-    "metrics[processing_time]": 3,
-    "client_meta[age]": 40,
+    "metrics[satisfaction_rate]": 0.12,
+    "metrics[processing_time]": 14,
+    "client_meta[age]": 20,
     "client_meta[gender]": "female"
 }
