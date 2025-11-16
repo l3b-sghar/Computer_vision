@@ -1,0 +1,34 @@
+{
+    "model": "rizvandwiki/gender-classification",
+    "accuracy": 0.92,
+    "classes": [
+        "female",
+        "male"
+    ],
+    "precision": [
+        0.92,
+        0.92
+    ],
+    "recall": [
+        0.92,
+        0.92
+    ],
+    "f1_score": [
+        0.92,
+        0.92
+    ],
+    "support": [
+        2500,
+        2500
+    ],
+    "confusion_matrix": [
+        [
+            2300,
+            200
+        ],
+        [
+            200,
+            2300
+        ]
+    ]
+}

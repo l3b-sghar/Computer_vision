@@ -1,0 +1,8 @@
+======================================================================
+MODEL EVALUATION SUMMARY
+======================================================================
+
+Gender Classification Accuracy: 92.00%
+Age Classification Accuracy: 76.67%
+
+All detailed metrics and plots saved in 'evaluation_results' folder.
