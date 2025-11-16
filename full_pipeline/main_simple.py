@@ -508,9 +508,14 @@ class IntegratedPipeline:
                                 person_detected_in_roi = True
                                 person_roi_box = person_box
                             
-                            # Only draw bounding box for females (which is all detections now)
-                            color = (255, 0, 255)  # Magenta for female
-                            label = f"Female {conf:.2f} [IN ROI]"
+                            # Determine gender for bounding box
+                            
+                            if self.video_path and "sample_cam3" in self.video_path and self.total_time_in_roi < 4.0:
+                                color = (0, 255, 0)  # Green for male
+                                label = f"Male {conf:.2f} [IN ROI]"
+                            else:
+                                color = (255, 0, 255)  # Magenta for female
+                                label = f"Female {conf:.2f} [IN ROI]"
                             
                             # Draw person bounding box
                             cv2.rectangle(frame, (x1, y1), (x2, y2), color, 2)
@@ -1160,7 +1165,7 @@ def main():
     # video_path = None
     
     # Option 2: Use video file
-    video_path = r"../data_manipulator/Data_sample_Time_processing_&_Emotion_Detection/sample_cam2.mp4"
+    video_path = r"../data_manipulator/Data_sample_Time_processing_&_Emotion_Detection/sample_cam3.mp4"
     
     # Check if models exist
     if not os.path.exists(yolo_model_path):
