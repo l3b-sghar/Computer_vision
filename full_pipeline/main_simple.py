@@ -1188,9 +1188,9 @@ def main():
         yolo_model_path, 
         tflite_model_path, 
         video_path, 
-        yolo_skip_frames=3,      # More frequent person detection for smoother tracking
-        fer_skip_frames=8,       # Balanced emotion detection
-        body_skip_frames=8,      # Balanced body language
+        yolo_skip_frames=5,      # More frequent person detection for smoother tracking
+        fer_skip_frames=5,       # Balanced emotion detection
+        body_skip_frames=18,      # Balanced body language
         gender_skip_frames=15,   # Less frequent (transformer models are slower)
         age_skip_frames=15,      # Less frequent (transformer models are slower)
         counter_id="C1"
